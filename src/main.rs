@@ -1,17 +1,25 @@
 use arrow::{
-    array::{ Float64Array, Int32Array, StringArray, TimestampMicrosecondArray},
-    datatypes::{DataType, Field, Schema, TimeUnit,},
+    array::{Float64Array, Int32Array, StringArray, TimestampMicrosecondArray},
+    datatypes::{DataType, Field, Schema, TimeUnit},
     record_batch::RecordBatch,
 };
 use iceberg::{
-    arrow::arrow_schema_to_schema, io::{FileIO, FileIOBuilder}, spec::{DataFile, DataFileFormat, }, table::Table, writer::{
-        base_writer::data_file_writer::DataFileWriterBuilder, file_writer::{
-            location_generator::{DefaultFileNameGenerator, DefaultLocationGenerator}, ParquetWriterBuilder
-        }, IcebergWriter, IcebergWriterBuilder
-    }, Catalog, NamespaceIdent, TableCreation, TableIdent
+    Catalog, NamespaceIdent, TableCreation, TableIdent,
+    arrow::arrow_schema_to_schema,
+    io::{FileIO, FileIOBuilder},
+    spec::{DataFile, DataFileFormat},
+    table::Table,
+    writer::{
+        IcebergWriter, IcebergWriterBuilder,
+        base_writer::data_file_writer::DataFileWriterBuilder,
+        file_writer::{
+            ParquetWriterBuilder,
+            location_generator::{DefaultFileNameGenerator, DefaultLocationGenerator},
+        },
+    },
 };
 use iceberg_catalog_memory::MemoryCatalog;
-use parquet::file::properties::WriterProperties;
+use parquet::{arrow::PARQUET_FIELD_ID_META_KEY, file::properties::WriterProperties};
 use std::sync::Arc;
 use std::{collections::HashMap, env};
 
@@ -94,8 +102,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create first schema and table
     let schema1 = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
-        Field::new("name", DataType::Utf8, false),
+        Field::new("id", DataType::Int32, false).with_metadata(HashMap::from_iter([(
+            PARQUET_FIELD_ID_META_KEY.to_owned(),
+            "1".to_owned(),
+        )])),
+        Field::new("name", DataType::Utf8, false).with_metadata(HashMap::from_iter([(
+            PARQUET_FIELD_ID_META_KEY.to_owned(),
+            "2".to_owned(),
+        )])),
     ]));
 
     let table1 = create_iceberg_table(
@@ -119,13 +133,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_arrow_data(&table1, batch1, &file_io).await?;
 
     // Create second schema and table
-    let schema2  = Arc::new(Schema::new(vec![
+    let schema2 = Arc::new(Schema::new(vec![
         Field::new(
             "timestamp",
             DataType::Timestamp(TimeUnit::Microsecond, None),
             false,
-        ),
-        Field::new("value", DataType::Float64, true),
+        )
+        .with_metadata(HashMap::from_iter([(
+            PARQUET_FIELD_ID_META_KEY.to_owned(),
+            "0".to_owned(),
+        )])),
+        Field::new("value", DataType::Float64, true).with_metadata(HashMap::from_iter([(
+            PARQUET_FIELD_ID_META_KEY.to_owned(),
+            "1".to_owned(),
+        )])),
     ]));
 
     let table2 = create_iceberg_table(
