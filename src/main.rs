@@ -5,6 +5,7 @@ use arrow::{
     datatypes::{DataType, Field, Schema, TimeUnit},
     record_batch::RecordBatch,
 };
+use futures_util::TryStreamExt;
 use iceberg::{
     Catalog, NamespaceIdent, TableCreation, TableIdent,
     arrow::arrow_schema_to_schema,
@@ -21,7 +22,7 @@ use iceberg::{
         },
     },
 };
-use iceberg_catalog_memory::MemoryCatalog;
+use iceberg_catalog_hms::MemoryCatalog;
 use parquet::{arrow::PARQUET_FIELD_ID_META_KEY, file::properties::WriterProperties};
 
 // 1. Setup function to initialize catalog and FileIO
@@ -108,6 +109,24 @@ async fn write_arrow_data(
     Ok(())
 }
 
+// Function to query an Iceberg table
+async fn query_iceberg_table(table: &Table) -> iceberg::Result<Vec<RecordBatch>> {
+    // Create a scan builder
+    let scan = table.scan().build()?;
+
+    // You can add filters if needed
+    // scan.filter(...);  // Add predicates/filters
+
+    // You can select specific columns
+    // scan.select(vec!["column1", "column2"]);
+
+    // Execute the scan to get an ArrowStream
+    let stream = scan.to_arrow().await?;
+
+    // Collect all batches (for simplicity - in production you'd process the stream)
+    stream.try_collect().await
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize catalog and FileIO
@@ -183,6 +202,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Write second dataset
     write_arrow_data(&table2, &catalog, batch2, &file_io).await?;
+
+    for rb in query_iceberg_table(&table1).await? {
+        println!("{rb:?}");
+    }
+
+    for rb in query_iceberg_table(&table2).await? {
+        println!("{rb:?}");
+    }
 
     Ok(())
 }

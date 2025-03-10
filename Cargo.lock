@@ -1339,6 +1339,7 @@ name = "iceberg-example"
 version = "0.1.0"
 dependencies = [
  "arrow",
+ "futures-util",
  "iceberg",
  "iceberg-catalog-memory",
  "parquet",
