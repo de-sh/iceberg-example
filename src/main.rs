@@ -1,3 +1,5 @@
+use std::{collections::HashMap, env, sync::Arc};
+
 use arrow::{
     array::{Float64Array, Int32Array, StringArray, TimestampMicrosecondArray},
     datatypes::{DataType, Field, Schema, TimeUnit},
@@ -7,8 +9,9 @@ use iceberg::{
     Catalog, NamespaceIdent, TableCreation, TableIdent,
     arrow::arrow_schema_to_schema,
     io::{FileIO, FileIOBuilder},
-    spec::{DataFile, DataFileFormat},
+    spec::DataFileFormat,
     table::Table,
+    transaction::Transaction,
     writer::{
         IcebergWriter, IcebergWriterBuilder,
         base_writer::data_file_writer::DataFileWriterBuilder,
@@ -20,11 +23,9 @@ use iceberg::{
 };
 use iceberg_catalog_memory::MemoryCatalog;
 use parquet::{arrow::PARQUET_FIELD_ID_META_KEY, file::properties::WriterProperties};
-use std::sync::Arc;
-use std::{collections::HashMap, env};
 
 // 1. Setup function to initialize catalog and FileIO
-async fn setup_catalog() -> iceberg::Result<(FileIO, MemoryCatalog)> {
+async fn setup_catalog() -> iceberg::Result<(FileIO, impl Catalog)> {
     let file_io = FileIOBuilder::new_fs_io().build()?;
     let catalog = MemoryCatalog::new(file_io.clone(), None);
     Ok((file_io, catalog))
@@ -32,7 +33,7 @@ async fn setup_catalog() -> iceberg::Result<(FileIO, MemoryCatalog)> {
 
 // 2. Function to create Iceberg table with specific schema
 async fn create_iceberg_table(
-    catalog: &MemoryCatalog,
+    catalog: &impl Catalog,
     namespace_name: &str,
     table_name: &str,
     arrow_schema: &Schema,
@@ -69,9 +70,10 @@ async fn create_iceberg_table(
 // 3. Generic function to write Arrow data to Iceberg table
 async fn write_arrow_data(
     table: &Table,
+    catalog: &impl Catalog,
     batch: RecordBatch,
     file_io: &FileIO,
-) -> iceberg::Result<Vec<DataFile>> {
+) -> iceberg::Result<()> {
     // Create location generator from table metadata
     let location_gen = DefaultLocationGenerator::new(table.metadata().clone())?;
 
@@ -92,7 +94,18 @@ async fn write_arrow_data(
         .await?;
 
     writer.write(batch).await?;
-    writer.close().await
+    let data_files = writer.close().await?;
+
+    // Add the data files to the transaction
+    let transaction = Transaction::new(table);
+    let mut append = transaction.fast_append(None, vec![])?;
+    append.add_data_files(data_files)?;
+    let transaction = append.apply().await?;
+
+    // Commit the transaction to create a new snapshot
+    transaction.commit(catalog).await?;
+
+    Ok(())
 }
 
 #[tokio::main]
@@ -130,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Write first dataset
-    write_arrow_data(&table1, batch1, &file_io).await?;
+    write_arrow_data(&table1, &catalog, batch1, &file_io).await?;
 
     // Create second schema and table
     let schema2 = Arc::new(Schema::new(vec![
@@ -169,7 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Write second dataset
-    write_arrow_data(&table2, batch2, &file_io).await?;
+    write_arrow_data(&table2, &catalog, batch2, &file_io).await?;
 
     Ok(())
 }
