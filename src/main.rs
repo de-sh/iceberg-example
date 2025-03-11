@@ -22,7 +22,7 @@ use iceberg::{
         },
     },
 };
-use iceberg_catalog_hms::MemoryCatalog;
+use iceberg_catalog_hms::HmsCatalogConfig;
 use parquet::{arrow::PARQUET_FIELD_ID_META_KEY, file::properties::WriterProperties};
 
 // 1. Setup function to initialize catalog and FileIO

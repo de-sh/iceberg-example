@@ -7,7 +7,7 @@ edition = "2024"
 arrow = "53.4.0"
 futures-util = "0.3.31"
 iceberg = "0.4.0"
-iceberg-catalog-memory = "0.4.0"
+iceberg-catalog-hms = "0.4.0"
 parquet = "53.4.0"
 tokio = { version = "1.43.0", features = ["full"] }
 uuid = "1.15.1"
